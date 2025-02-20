@@ -1,4 +1,4 @@
-package io.github.gaoshq7;
+package cn.gsq.common;
 
 public class Main {
     public static void main(String[] args) {
