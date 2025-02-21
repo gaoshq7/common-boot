@@ -155,44 +155,6 @@
                         <version>0.7.0</version>
                         <extensions>true</extensions>
                         <configuration>
-                            <autoPublish>false</autoPublish>
-                            <waitUntil>published</waitUntil>
-                            <publishingServerId>sonatype-gaoshq7</publishingServerId>
-                        </configuration>
-                    </plugin>
-                </plugins>
-            </build>
-        </profile>
-
-        <profile>
-            <id>snapshot</id>
-            <build>
-                <plugins>
-                    <plugin>
-                        <groupId>org.apache.maven.plugins</groupId>
-                        <artifactId>maven-source-plugin</artifactId>
-                        <version>3.1.0</version>
-                        <inherited>true</inherited>
-                        <executions>
-                            <execution>
-                                <id>attach-sources</id>
-                                <goals>
-                                    <goal>jar</goal>
-                                </goals>
-                            </execution>
-                        </executions>
-                        <configuration>
-                            <excludeResources>true</excludeResources>
-                            <useDefaultExcludes>true</useDefaultExcludes>
-                        </configuration>
-                    </plugin>
-
-                    <plugin>
-                        <groupId>org.sonatype.central</groupId>
-                        <artifactId>central-publishing-maven-plugin</artifactId>
-                        <version>0.7.0</version>
-                        <extensions>true</extensions>
-                        <configuration>
                             <publishingServerId>sonatype-gaoshq7</publishingServerId>
                         </configuration>
                     </plugin>
