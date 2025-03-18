@@ -14,15 +14,13 @@ import java.util.Date;
  * @date : 2024-05-08 11:24
  * @note : It's not technology, it's art !
  **/
+@Getter
 public class GalaxyGeneralEvent extends ApplicationEvent {
 
-    @Getter
     private final String date = DateUtil.format(new Date(), "yyyy-MM-dd HH:mm:ss");
 
-    @Getter
     private final String module;  // 模块名称
 
-    @Getter
     private final Object source;     // 事件内容
 
     /**
