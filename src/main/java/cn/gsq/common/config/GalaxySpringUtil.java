@@ -156,6 +156,10 @@ public class GalaxySpringUtil implements ApplicationListener, ApplicationContext
      * @note : An art cell !
     **/
     public static Environment getEnvironment() {
+        ApplicationContext ctx = context;
+        if (ctx != null) {
+            return ctx.getEnvironment();
+        }
         return GalaxyApplicationBuilder.getEnvironment();
     }
 
