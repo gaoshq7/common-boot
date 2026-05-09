@@ -7,7 +7,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 
@@ -15,26 +15,31 @@ import java.util.concurrent.TimeUnit;
 public class CommonAutoConfig {
 
     /**
-     * @Description : 获取线程处理器
-     * @Param : []
-     * @Return : cn.gsq.sdp.config.SdpAsyncProcessor
-     * @Author : gsq
-     * @Date : 9:35 上午
-     * @note : An art cell !
-     **/
+     * 默认线程池配置：
+     * - 核心线程：max(8, CPU * 2)，常驻；
+     * - 最大线程：200，防止突发流量打爆 JVM；
+     * - 队列容量：1024，先入队列、再扩线程；
+     * - 空闲存活：60s；
+     * - 拒绝策略：CallerRunsPolicy，过载时由调用线程兜底执行，提供天然背压。
+     *
+     * 不满足时声明自己的 CommonAsyncProcessor Bean 即可（@ConditionalOnMissingBean 会让位）。
+     */
     @Bean
     @ConditionalOnMissingBean(CommonAsyncProcessor.class)
-    public CommonAsyncProcessor buildConsumerQueueThreadPool(){
+    public CommonAsyncProcessor buildConsumerQueueThreadPool() {
         ThreadFactory threadFactory = new ThreadFactoryBuilder()
                 .setNameFormat("galaxy-common-thread-%d")
+                .setDaemon(true)
                 .build();
-        // 不限制线程数量；60秒空闲自动释放
-        ExecutorService pool = new ThreadPoolExecutor(0, Integer.MAX_VALUE, 60L,
+        int core = Math.max(8, Runtime.getRuntime().availableProcessors() * 2);
+        ExecutorService pool = new ThreadPoolExecutor(
+                core, 200, 60L,
                 TimeUnit.SECONDS,
-                new SynchronousQueue<>(),
+                new LinkedBlockingQueue<>(1024),
                 threadFactory,
-                new ThreadPoolExecutor.AbortPolicy()
+                new ThreadPoolExecutor.CallerRunsPolicy()
         );
         return new CommonAsyncProcessor(pool);
     }
+
 }
