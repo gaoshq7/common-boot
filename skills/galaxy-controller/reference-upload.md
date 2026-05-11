@@ -14,6 +14,8 @@ public Result upload() {
 }
 ```
 
+`hasFile()` 对非 multipart 请求返回 `false`，格式错误的 multipart 也返回 `false`，不会抛异常。
+
 ### 保存文件
 
 ```java
@@ -103,9 +105,54 @@ MultipartFileConfig.setFileTempPath("/var/data/uploads");
 
 ## 注意事项
 
-- 默认大小限制 **10MB**，`setMaxSize(0)` 恢复无限制
-- `useOriginalFilename=true` 时同名文件会**抛异常**（防覆盖）
-- `savePath` 应硬编码或从配置读取，不要用请求参数（路径穿越风险）
-- MIME 校验在保存后做，失败自动删文件。如需保存前校验，用 `setInputStreamType`
-- Spring multipart 配置仍需：`spring.servlet.multipart.max-file-size`
-- 返回的是**服务器本地路径**，如需提供下载/预览，需另外配置静态资源映射或写下载接口
+### ⚠️ 默认 10MB 限制
+
+```java
+// ❌ 如果没设 setMaxSize，默认只有 10MB
+// 上传 15MB 文件会抛 IllegalArgumentException("maxSize:too big:...")
+
+// ✅ 明确取消限制
+.setMaxSize(0)
+
+// ✅ 或设置更大的限制
+.setMaxSize("100MB")
+```
+
+### ⚠️ savePath 的路径穿越风险
+
+```java
+// ❌ 危险：savePath 来自用户输入
+.setSavePath(getParameter("path"))   // 用户传 "../../../etc" 可能写入系统目录
+
+// ✅ 安全：硬编码或从配置读取
+.setSavePath("/var/data/uploads")
+```
+
+### ⚠️ 返回的是服务器本地路径，不是 URL
+
+```java
+String path = createMultipart().save();  // 如 "/var/data/uploads/abc.jpg"
+
+// ❌ 不能直接给前端访问
+return Result.ok(path);  // 前端无法访问服务器的本地路径
+
+// ✅ 需要另外提供下载/预览接口
+return Result.ok("/api/download?path=" + URLEncoder.encode(path, "UTF-8"));
+```
+
+### ⚠️ useOriginalFilename=true 的覆盖风险
+
+同名文件会**抛异常**而不是覆盖。如果你需要允许覆盖（如更新头像），不要开这个选项，自己在外层删除旧文件后再上传。
+
+### ⚠️ Spring multipart 配置必须同步
+
+```yaml
+spring:
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 100MB      # 必须 >= setMaxSize，否则 Spring 先拒绝
+      max-request-size: 200MB
+```
+
+如果 `spring.servlet.multipart.max-file-size` 比 `setMaxSize` 小，Spring 会在到达 builder 之前拒绝，抛 `MaxUploadSizeExceededException`。
