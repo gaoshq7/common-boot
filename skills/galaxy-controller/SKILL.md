@@ -1,6 +1,6 @@
 ---
 name: galaxy-controller
-description: Spring MVC Controller 继承 AbstractController 基类，无需手动注入 HttpServletRequest 即可获取 request/response/IP/UA/参数/Session/文件上传等。当用户写"@RestController"、"@Controller"、"继承 AbstractController"、"写接口"、"获取参数"、"getParameter"、"文件上传"、"upload"、"Session"、"登录"时使用。
+description: Spring MVC Controller 继承 AbstractController 基类，无需手动注入 HttpServletRequest 即可获取 request/response/IP/UA/参数/Session/文件上传等。当用户写"@RestController"、"@Controller"、"继承 AbstractController"、"写接口"、"获取参数"、"getParameter"、"文件上传"、"upload"、"Session"时使用。
 ---
 
 # Galaxy Controller
@@ -22,7 +22,7 @@ public class UserController extends AbstractController {
 |------|-----------|
 | 基础对象（request/response/session/IP/UA） | 本文档下方 |
 | 参数获取（getParameter/getObject） | [reference-params.md](reference-params.md) |
-| Session 操作（登录/登出） | [reference-session.md](reference-session.md) |
+| Session 属性读写 | [reference-session.md](reference-session.md) |
 | 文件上传（MultipartFileBuilder） | [reference-upload.md](reference-upload.md) |
 | 完整方法签名清单 | [reference.md](reference.md) |
 
