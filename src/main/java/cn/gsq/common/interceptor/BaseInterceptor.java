@@ -1,7 +1,6 @@
 package cn.gsq.common.interceptor;
 
 import cn.gsq.common.DefaultSystemLog;
-import cn.gsq.common.controller.AbstractController;
 import cn.hutool.core.io.resource.ResourceUtil;
 import cn.hutool.core.map.MapUtil;
 import cn.hutool.json.JSONUtil;
@@ -130,7 +129,6 @@ public abstract class BaseInterceptor extends HandlerInterceptorAdapter {
             DefaultSystemLog.getLog().error("http请求异常: {}", request.getRequestURL().toString());
         }
         // 释放线程缓存资源
-        AbstractController.clearResources();
         clearResources();
     }
 
