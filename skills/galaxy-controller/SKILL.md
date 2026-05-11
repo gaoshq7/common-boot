@@ -24,7 +24,7 @@ public class UserController extends AbstractController {
 | 参数获取（getParameter/getObject） | [reference-params.md](reference-params.md) |
 | Session 操作（登录/登出） | [reference-session.md](reference-session.md) |
 | 文件上传（MultipartFileBuilder） | [reference-upload.md](reference-upload.md) |
-| 完整签名与拦截器协作 | [reference.md](reference.md) |
+| 完整方法签名清单 | [reference.md](reference.md) |
 
 ## 最常用 API
 

@@ -54,7 +54,7 @@ protected MultipartFileBuilder createMultipart();
 ## `BaseCallbackController` 完整方法（继承得到）
 
 ```java
-public void resetInfo();   // 默认空实现，子类可重写
+public void resetInfo();   // 默认空实现，子类可重写；需要业务方拦截器在 preHandle 中主动调 reload() 才会触发
 
 // 静态工具
 public static ServletRequestAttributes getRequestAttributes();      // 非请求线程抛 IllegalStateException
@@ -171,44 +171,6 @@ private void checkSaveOne() {
 public class MultipartFileConfig {
     public static void setFileTempPath(String fileTempPath);   // 启动期设置
     public static String getFileTempPath();                     // 默认 hutool UserInfo.getTempDir()
-}
-```
-
-## 与 `BaseInterceptor` 的协作
-
-```
-HTTP 请求来 → DispatcherServlet
-  → BaseInterceptor.preHandle(req, resp, Object handler)
-      ├─ /error 路径：调 error(response)，写自定义 body，return false
-      ├─ /favicon.ico：写 favicon，return false
-      └─ 其余：
-          ├─ if controller instanceof BaseCallbackController:
-          │     currentController.set((BaseCallbackController) controller)   ← ThreadLocal 缓存
-          └─ 调用子类抽象 preHandle(req, resp, HandlerMethod)
-
-  → 你的拦截器子类 preHandle(...) 返回 true
-      （可在此手动调 reload() —— 触发 currentController.resetInfo()）
-
-  → Controller 方法执行
-
-  → BaseInterceptor.postHandle(...) （状态码 ≥ 400 时打 error 日志）
-  → BaseInterceptor.afterCompletion(...)
-      ├─ ClientAbortException：warn 日志
-      ├─ 其他 ex：error 日志
-      ├─ AbstractController.clearResources()   ← 兼容方法（现为空实现，request attribute 自动回收）
-      └─ clearResources()                      ← 清 currentController ThreadLocal
-```
-
-子类可调 `reload()` 主动触发 `resetInfo()`：
-
-```java
-public class MyInterceptor extends BaseInterceptor {
-    @Override
-    protected boolean preHandle(HttpServletRequest req, HttpServletResponse resp, HandlerMethod handler) {
-        // 校验 token...
-        reload();   // 触发当前 controller 的 resetInfo()
-        return true;
-    }
 }
 ```
 
