@@ -1,5 +1,6 @@
 package cn.gsq.common.controller;
 
+import cn.gsq.common.DefaultSystemLog;
 import cn.gsq.common.controller.multipart.MultipartFileBuilder;
 import cn.gsq.common.interceptor.BaseCallbackController;
 import cn.hutool.core.convert.Convert;
@@ -15,7 +16,7 @@ import org.springframework.web.multipart.support.StandardMultipartHttpServletReq
 import javax.servlet.http.Cookie;
 import javax.servlet.http.HttpServletRequest;
 import java.util.Collections;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 
@@ -240,13 +241,15 @@ public abstract class AbstractController extends BaseCallbackController {
     /**
      * 获取来源的 url 参数。
      * <p>注意：Referer 可被客户端伪造，不可作为安全决策依据。
+     * <p>返回不可修改的 map（Referer 不存在时为不可修改空 map），调用方需自行 new 一份再修改。
      */
     protected Map<String, String> getRefererParameter() {
         String referer = getHeader(HttpHeaders.REFERER);
         if (StrUtil.isBlank(referer)) {
             return Collections.emptyMap();
         }
-        return HttpUtil.decodeParamMap(referer, CharsetUtil.charset(CharsetUtil.UTF_8));
+        return Collections.unmodifiableMap(
+                HttpUtil.decodeParamMap(referer, CharsetUtil.charset(CharsetUtil.UTF_8)));
     }
 
     /**
@@ -286,24 +289,34 @@ public abstract class AbstractController extends BaseCallbackController {
     }
 
     /**
-     * 获取请求头中的所有信息
+     * 获取请求头中的所有信息（不可修改副本）
      */
     protected Map<String, String> getHeaders() {
-        return Collections.unmodifiableMap(new HashMap<>(getHeaderMapValues(getRequest())));
+        return Collections.unmodifiableMap(getHeaderMapValues(getRequest()));
     }
 
     /**
-     * 获取所有参数
+     * 获取所有参数。
+     * <p>返回不可修改的 map 副本，且值数组也是克隆副本——外部修改不会影响 servlet 容器内部状态。
      */
     protected Map<String, String[]> getParametersMap() {
-        return Collections.unmodifiableMap(new HashMap<>(getRequest().getParameterMap()));
+        Map<String, String[]> source = getRequest().getParameterMap();
+        Map<String, String[]> copy = new LinkedHashMap<>(source.size());
+        for (Map.Entry<String, String[]> entry : source.entrySet()) {
+            String[] values = entry.getValue();
+            copy.put(entry.getKey(), values == null ? null : values.clone());
+        }
+        return Collections.unmodifiableMap(copy);
     }
 
     /*---------- 文件上传相关函数 ----------*/
 
     /**
      * 释放资源（保留此方法以兼容现有拦截器，内部已使用 request attribute 替代 ThreadLocal）。
+     *
+     * @deprecated 自从切换到 request attribute 后即为空实现，后续版本会移除；调用方无需再调用。
      */
+    @Deprecated
     public static void clearResources() {
         // 已由 request attribute 替代 ThreadLocal，无需手动清理
     }
@@ -337,7 +350,9 @@ public abstract class AbstractController extends BaseCallbackController {
     }
 
     /**
-     * 判断是否存在文件（非 multipart 请求返回 false，格式错误的 multipart 请求也返回 false）
+     * 判断是否存在文件（非 multipart 请求返回 false，格式错误的 multipart 请求也返回 false）。
+     * <p>注意：进入此方法的 multipart 分支会触发 Spring 实际解析请求体（生成临时文件），
+     * 并非"零成本探测"。
      */
     protected boolean hasFile() {
         HttpServletRequest request = getRequest();
@@ -348,6 +363,7 @@ public abstract class AbstractController extends BaseCallbackController {
             Map<String, MultipartFile> fileMap = getMultiRequest().getFileMap();
             return fileMap != null && !fileMap.isEmpty();
         } catch (Exception e) {
+            DefaultSystemLog.getLog().warn("hasFile() 解析 multipart 失败: {}", e.getMessage(), e);
             return false;
         }
     }

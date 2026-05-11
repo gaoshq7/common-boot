@@ -37,9 +37,9 @@ public class MultipartFileBuilder {
      */
     private long maxSize = DEFAULT_MAX_SIZE;
     /**
-     * 字段名称
+     * 字段名称（使用 LinkedHashSet 保证 saves() 返回路径顺序与 addFieldName 调用顺序一致）
      */
-    private Set<String> fieldNames = new HashSet<>();
+    private Set<String> fieldNames = new LinkedHashSet<>();
     /**
      * 多文件上传
      */
@@ -298,8 +298,8 @@ public class MultipartFileBuilder {
         if (fileSize <= 0) {
             throw new IllegalArgumentException("fileSize:文件内容为空");
         }
-        // 文件名后缀
-        if (this.fileExt != null) {
+        // 文件名后缀（空数组与 null 等价，均视为不限制）
+        if (this.fileExt != null && this.fileExt.length > 0) {
             String checkName = FileUtil.extName(fileName);
             boolean find = false;
             for (String ext : this.fileExt) {
@@ -316,8 +316,8 @@ public class MultipartFileBuilder {
         if (maxSize > 0 && fileSize > maxSize) {
             throw new IllegalArgumentException("maxSize:too big:" + fileSize + ">" + maxSize);
         }
-        // 文件流类型（通过文件内容判断真实类型，防篡改扩展名）
-        if (this.inputStreamType != null) {
+        // 文件流类型（通过文件内容判断真实类型，防篡改扩展名；空数组与 null 等价，均视为不限制）
+        if (this.inputStreamType != null && this.inputStreamType.length > 0) {
             try (InputStream inputStream = multiFile.getInputStream()) {
                 String fileType = FileTypeUtil.getType(inputStream);
                 if (!ArrayUtil.containsIgnoreCase(this.inputStreamType, fileType)) {
