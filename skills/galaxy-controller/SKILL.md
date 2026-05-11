@@ -107,7 +107,7 @@ getIp()                         → String（优先代理头，可被伪造）
 getRemoteIp()                   → String（TCP 层，不可伪造）
 isLocalIp() / isInternalIp()    → boolean（基于 getRemoteIp，安全决策用此）
 getUserAgent()                  → String（可能为 null）
-parseUserAgent()                → cn.hutool.http.useragent.UserAgent
+parseUserAgent()                → cn.hutool.http.useragent.UserAgent（⚠️ 无 UA 头时为 null）
 isMobile()                      → boolean
 
 // 请求方法

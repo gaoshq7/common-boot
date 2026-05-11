@@ -58,7 +58,7 @@ protected boolean  isAjax();                                   // 仅 X-Requeste
 
 ```java
 protected String     getUserAgent();              // 不存在返回 null
-protected UserAgent  parseUserAgent();            // hutool UserAgent，无 UA 头时各字段为 null/空
+protected UserAgent  parseUserAgent();            // ⚠️ 无 UA 头或空白时返回 null（hutool 行为），调用前必须判空
 protected boolean    isMobile();                  // UA 启发式
 ```
 

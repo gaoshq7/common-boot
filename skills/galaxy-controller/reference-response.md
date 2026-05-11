@@ -190,7 +190,7 @@ removeCookie("session");
 ```java
 // 想自定义错误响应体：用 status + writeJson
 status(400);
-writeJson(Map.of("code", "INVALID_PARAM", "msg", "userId 必填"));
+writeJson(ApiResp.fail("INVALID_PARAM", "userId 必填"));   // ApiResp 是业务包装类
 
 // 想用 servlet 容器/Spring 的统一错误页：用 sendError
 sendError(400, "userId 必填");
