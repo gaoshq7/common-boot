@@ -41,11 +41,11 @@ protected Map<String, String[]> getParametersMap();
 protected Map<String, String>   getRefererParameter();
 protected String   getRequestUrl();
 protected String   getRequestUri();
-protected <T> T    getObject(Class<T> tClass);
-protected <T> T    getObject(Class<T> tClass, boolean ignoreError);
+protected <T> T    getObject(Class<T> tClass);                        // 类型不匹配时抛异常
+protected <T> T    getObject(Class<T> tClass, boolean ignoreError);   // true=忽略转换错误（类型不匹配字段保持默认值）
 
 // 文件上传
-public static void clearResources();   // 由 BaseInterceptor.afterCompletion 自动调
+public static void clearResources();   // 兼容方法，现为空实现（request attribute 自动回收）
 protected MultipartHttpServletRequest getMultiRequest();
 protected boolean  hasFile();
 protected MultipartFileBuilder createMultipart();
@@ -59,7 +59,7 @@ public void resetInfo();   // 默认空实现，子类可重写
 // 静态工具
 public static ServletRequestAttributes getRequestAttributes();      // 非请求线程抛 IllegalStateException
 public static ServletRequestAttributes tryGetRequestAttributes();   // 可能 null
-public static String getClientIP();
+public static String getClientIP();                                    // 优先代理头，可被伪造
 public static Map<String, String> getHeaderMapValues(HttpServletRequest request);  // 同名值逗号拼接
 
 // 实例方法
