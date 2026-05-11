@@ -841,7 +841,7 @@ public abstract class AbstractController extends BaseCallbackController {
     private HttpServletResponse requireResponse() {
         HttpServletResponse response = getResponse();
         if (response == null) {
-            throw new IllegalStateException("当前请求上下文不存在 response（preHandle 阶段或非 web 请求线程）");
+            throw new IllegalStateException("当前请求上下文不存在 response（非 web 请求线程，如 @Async / 定时任务）");
         }
         return response;
     }

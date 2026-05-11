@@ -4,12 +4,28 @@
 
 | 方法 | 返回 | 说明 |
 |------|------|------|
-| `getSession()` | `HttpSession` | 不存在时**自动创建** session |
+| `getSession()` | `javax.servlet.http.HttpSession` | 不存在时**自动创建** session |
 | `getSession(boolean create)` | `HttpSession` | `false` 时不创建，可能返回 `null` |
-| `getSessionAttribute(String name)` | `String` | 不存在返回 `null` |
-| `getSessionAttributeObj(String name)` | `Object` | 拿原始对象；不存在返回 `null` |
+| `getSessionAttribute(String name)` | `String` | 不存在返回 `null`；⚠️ 非 String 值返回 `value.toString()`，不是 null |
+| `getSessionAttributeObj(String name)` | `Object` | 拿原始对象；不存在返回 `null`（**推荐用此读复合对象**） |
 | `setSessionAttribute(String name, Object value)` | — | 写入 session |
 | `removeSessionAttribute(String name)` | — | 删除 |
+
+### ⚠️ `getSessionAttribute` 的 `.toString()` 陷阱
+
+```java
+// 写入一个 User 对象
+setSessionAttribute("currentUser", new User(1L, "alice"));
+
+// ❌ 用 getSessionAttribute 取出来
+String u = getSessionAttribute("currentUser");
+// u == "com.example.User@4f2a8d3b"（对象的默认 toString），不是 null、不是 JSON
+
+// ✅ 复合对象必须用 getSessionAttributeObj
+User u = (User) getSessionAttributeObj("currentUser");
+```
+
+**规则**：`getSessionAttribute(String)` 仅适用于"值确实是 `String` 或基础类型（数字会 toString 成数字字符串，可接受）"的场景；任何复合对象都必须用 `getSessionAttributeObj`。
 
 ### ⚠️ Session vs Request Attribute 的区别
 

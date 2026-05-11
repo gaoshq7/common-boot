@@ -6,15 +6,21 @@
 
 ```java
 @PostMapping("/upload")
-public Result upload() {
+public ApiResp<String> upload() {
     if (!hasFile()) {
-        return Result.fail("请选择文件");
+        return ApiResp.fail("请选择文件");
     }
     // ...
 }
 ```
 
-`hasFile()` 对非 multipart 请求返回 `false`，格式错误的 multipart 也返回 `false`，不会抛异常。
+> 💡 示例中 `ApiResp` / `Result` 是业务方自定义的响应包装类，本库不提供。
+
+`hasFile()` 对非 multipart 请求返回 `false`，格式错误的 multipart 也返回 `false`（异常会被 `DefaultSystemLog.warn` 记录，便于排障）。
+
+⚠️ `hasFile()` 进入 multipart 分支会**触发 Spring 实际解析请求体**（生成临时文件），并非"零成本探测"——只是不抛异常而已。
+
+⚠️ 直接调 `createMultipart()` / `getMultiRequest()` 而非 multipart 请求会抛 `IllegalStateException`。建议在 controller 上限定 `consumes = "multipart/form-data"` 或前置 `hasFile()` 检查。
 
 ### 保存文件
 
@@ -34,25 +40,27 @@ public Result upload() throws IOException {
 
 | 方法 | 作用 | 默认 |
 |------|------|------|
-| `addFieldName(String)` | 表单字段名 | 空集合 |
+| `addFieldName(String)` | 添加表单字段名（多字段时 `saves()` 返回顺序与添加顺序一致） | 空集合 |
 | `resetFieldName(String)` | 清空后只用该字段 | — |
 | `setMultiple(boolean)` | 单字段多文件 | `false` |
 | `setMaxSize(long)` | 字节上限（0 = 不限） | **10MB** |
 | `setMaxSize(String)` | 如 `"10MB"` | — |
-| `setFileExt(String...)` | 允许的后缀（大小写无关） | 不限 |
-| `setInputStreamType(String...)` | 文件头嗅探白名单 | 不限 |
+| `setFileExt(String...)` | 允许的后缀（大小写无关；空数组或 null 均视为不限） | 不限 |
+| `setInputStreamType(String...)` | 文件头嗅探白名单（空数组或 null 均视为不限） | 不限 |
 | `setContentTypePrefix(String)` | MIME 前缀 | 不限 |
 | `setSavePath(String)` | 保存目录 | 系统临时目录 |
-| `setUseOriginalFilename(boolean)` | 是否用原文件名 | `false` |
+| `setUseOriginalFilename(boolean)` | 是否用原文件名（同名会抛异常，不会覆盖） | `false` |
 
 ## 保存方法
 
+四个方法都声明 **`throws IOException`**（**checked**），调用方必须 `throws` 或 `try-catch`。校验失败（fileExt / maxSize / inputStreamType / contentTypePrefix / 非法文件名等）抛 `IllegalArgumentException`，磁盘写入失败抛 `IOException`。
+
 | 方法 | 返回 | 适用场景 |
 |------|------|----------|
-| `save()` | `String` 路径 | 单字段单文件 |
-| `saves()` | `String[]` | 多字段/多文件 |
-| `saveAndName()` | `String[2]` `[path, originalFilename]` | 单文件，要原文件名 |
-| `saveAndNames()` | `List<String[2]>` | 多文件，要原文件名 |
+| `save() throws IOException` | `String` 路径 | 单字段单文件 |
+| `saves() throws IOException` | `String[]` | 多字段/多文件 |
+| `saveAndName() throws IOException` | `String[2]` `[path, originalFilename]` | 单文件，要原文件名 |
+| `saveAndNames() throws IOException` | `List<String[2]>` | 多文件，要原文件名 |
 
 ## 典型用法
 
@@ -132,17 +140,13 @@ MultipartFileConfig.setFileTempPath("/var/data/uploads");
 
 ```java
 String path = createMultipart().save();  // 如 "/var/data/uploads/abc.jpg"
-
-// ❌ 不能直接给前端访问
-return Result.ok(path);  // 前端无法访问服务器的本地路径
-
-// ✅ 需要另外提供下载/预览接口
-return Result.ok("/api/download?path=" + URLEncoder.encode(path, "UTF-8"));
 ```
+
+返回值是**服务器本地文件系统路径**，前端无法直接访问。如何让前端访问取决于业务层的设计（通常需要把 path 存到业务表、暴露 id，下载接口根据 id 反查 path），**不要直接把 path 暴露给前端使用**——会引入任意文件读取风险。
 
 ### ⚠️ useOriginalFilename=true 的覆盖风险
 
-同名文件会**抛异常**而不是覆盖。如果你需要允许覆盖（如更新头像），不要开这个选项，自己在外层删除旧文件后再上传。
+同名文件会**抛异常**而不是覆盖。如果你需要允许覆盖同名文件，不要开这个选项，自己在外层删除旧文件后再上传。
 
 ### ⚠️ Spring multipart 配置必须同步
 
