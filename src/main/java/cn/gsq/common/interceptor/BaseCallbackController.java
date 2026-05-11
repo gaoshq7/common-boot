@@ -31,51 +31,37 @@ public abstract class BaseCallbackController {
     }
 
     /**
-     * @Description : 全局获取请求对象
-     * @Param : []
-     * @Return : org.springframework.web.context.request.ServletRequestAttributes
-     * @Author : gsq
-     * @Date : 14:12
-     * @note : An art cell ! 
-    **/
+     * 全局获取请求对象
+     *
+     * @throws IllegalStateException 当前线程不在 HTTP 请求上下文中时抛出
+     */
     public static ServletRequestAttributes getRequestAttributes() {
         ServletRequestAttributes servletRequestAttributes = tryGetRequestAttributes();
-        Objects.requireNonNull(servletRequestAttributes);
+        if (servletRequestAttributes == null) {
+            throw new IllegalStateException("当前线程不在 HTTP 请求上下文中（常见于 @Async / 定时任务 / MQ 消费线程），无法获取请求属性");
+        }
         return servletRequestAttributes;
     }
 
     /**
-     * @Description : 获取ServletRequestAttributes
-     * @Param : []
-     * @Return : org.springframework.web.context.request.ServletRequestAttributes
-     * @Author : gsq
-     * @Date : 14:52
-     * @note : An art cell ! 
-    **/
+     * 获取 ServletRequestAttributes（不会抛异常，不在请求上下文中时返回 null）
+     */
     public static ServletRequestAttributes tryGetRequestAttributes() {
-        RequestAttributes attributes = null;
         try {
-            attributes = RequestContextHolder.currentRequestAttributes();
+            RequestAttributes attributes = RequestContextHolder.currentRequestAttributes();
+            if (attributes instanceof ServletRequestAttributes) {
+                return (ServletRequestAttributes) attributes;
+            }
+            return null;
         } catch (IllegalStateException e) {
-            // TODO: handle exception
-        }
-        if (attributes == null) {
+            // 当前线程不在请求上下文中（如异步线程、定时任务）
             return null;
         }
-        if (attributes instanceof ServletRequestAttributes) {
-            return (ServletRequestAttributes) attributes;
-        }
-        return null;
     }
 
     /**
-     * @Description : 获取客户端的ip地址
-     * @Param : []
-     * @Return : java.lang.String
-     * @Author : gsq
-     * @Date : 17:01
-     * @note : An art cell ! 
-    **/
+     * 获取客户端的 ip 地址（优先代理头，可被伪造）
+     */
     public static String getClientIP() {
         ServletRequestAttributes servletRequest = tryGetRequestAttributes();
         if (servletRequest == null) {
@@ -89,151 +75,133 @@ public abstract class BaseCallbackController {
     }
 
     /**
-     * @Description : 提取request中的所有harder信息
-     * @Param : [request]
-     * @Return : java.util.Map<java.lang.String,java.lang.String>
-     * @Author : gsq
-     * @Date : 14:11
-     * @note : An art cell ! 
-    **/
+     * 提取 request 中的所有 header 信息。
+     * <p>同名 header 的值用逗号拼接（RFC 2616 标准）。
+     *
+     * @param request HTTP 请求
+     */
     public static Map<String, String> getHeaderMapValues(HttpServletRequest request) {
         Enumeration<String> enumeration = request.getHeaderNames();
         Map<String, String> headerMapValues = new HashMap<>(20);
         if (enumeration != null) {
-            for (; enumeration.hasMoreElements(); ) {
+            while (enumeration.hasMoreElements()) {
                 String name = enumeration.nextElement();
-                headerMapValues.put(name, request.getHeader(name));
+                Enumeration<String> values = request.getHeaders(name);
+                if (values != null && values.hasMoreElements()) {
+                    String first = values.nextElement();
+                    if (values.hasMoreElements()) {
+                        StringBuilder sb = new StringBuilder(first);
+                        while (values.hasMoreElements()) {
+                            sb.append(", ").append(values.nextElement());
+                        }
+                        headerMapValues.put(name, sb.toString());
+                    } else {
+                        headerMapValues.put(name, first);
+                    }
+                }
             }
         }
         return headerMapValues;
     }
 
     /**
-     * @Description : 获取request
-     * @Param : []
-     * @Return : javax.servlet.http.HttpServletRequest
-     * @Author : gsq
-     * @Date : 14:11
-     * @note : An art cell ! 
-    **/
+     * 获取 request
+     *
+     * @throws IllegalStateException 当前线程不在 HTTP 请求上下文中时抛出
+     */
     public HttpServletRequest getRequest() {
-        HttpServletRequest request = getRequestAttributes().getRequest();
-        Objects.requireNonNull(request, "request null");
-        return request;
+        return getRequestAttributes().getRequest();
     }
 
     /**
-     * @Description : 获取response
-     * @Param : []
-     * @Return : javax.servlet.http.HttpServletResponse
-     * @Author : gsq
-     * @Date : 16:58
-     * @note : An art cell ! 
-    **/
+     * 获取 response（可能返回 null，如拦截器 preHandle 阶段）
+     */
     public HttpServletResponse getResponse() {
-        HttpServletResponse response = getRequestAttributes().getResponse();
-        Objects.requireNonNull(response, "response null");
-        return response;
+        return getRequestAttributes().getResponse();
     }
 
     /**
-     * @Description : 获取session
-     * @Param : []
-     * @Return : javax.servlet.http.HttpSession
-     * @Author : gsq
-     * @Date : 16:58
-     * @note : An art cell ! 
-    **/
+     * 获取 session（不存在时自动创建）
+     */
     public HttpSession getSession() {
-        HttpSession session = getRequestAttributes().getRequest().getSession();
-        if (session == null) {
-            session = BaseInterceptor.getSession();
-        }
-        Objects.requireNonNull(session, "session null");
-        return session;
+        return getSession(true);
     }
 
     /**
-     * @Description : 获取ServletContext
-     * @Param : []
-     * @Return : javax.servlet.ServletContext
-     * @Author : gsq
-     * @Date : 16:59
-     * @note : An art cell ! 
-    **/
+     * 获取 session
+     *
+     * @param create 不存在时是否自动创建
+     */
+    public HttpSession getSession(boolean create) {
+        return getRequestAttributes().getRequest().getSession(create);
+    }
+
+    /**
+     * 获取 ServletContext
+     */
     public ServletContext getServletContext() {
         return getRequest().getServletContext();
     }
 
     /**
-     * @Description : 获取request属性
-     * @Param : [name]
-     * @Return : java.lang.Object
-     * @Author : gsq
-     * @Date : 16:59
-     * @note : An art cell ! 
-    **/
+     * 获取 request 属性
+     *
+     * @param name 属性名
+     */
     public Object getAttribute(String name) {
+        Objects.requireNonNull(name, "attribute name must not be null");
         return getRequestAttributes().getAttribute(name, RequestAttributes.SCOPE_REQUEST);
     }
 
     /**
-     * @Description : 添加request属性
-     * @Param : [name, object]
-     * @Return : void
-     * @Author : gsq
-     * @Date : 17:00
-     * @note : An art cell ! 
-    **/
+     * 添加 request 属性
+     *
+     * @param name   属性名
+     * @param object 属性值
+     */
     public void setAttribute(String name, Object object) {
+        Objects.requireNonNull(name, "attribute name must not be null");
         getRequestAttributes().setAttribute(name, object, RequestAttributes.SCOPE_REQUEST);
     }
 
     /**
-     * @Description : 获取session字符串
-     * @Param : [name]
-     * @Return : java.lang.String
-     * @Author : gsq
-     * @Date : 16:59
-     * @note : An art cell ! 
-    **/
+     * 获取 session 字符串（不存在时返回 null）
+     *
+     * @param name session key
+     */
     public String getSessionAttribute(String name) {
-        return Objects.toString(getSessionAttributeObj(name), "");
+        Object value = getSessionAttributeObj(name);
+        return value == null ? null : value.toString();
     }
 
     /**
-     * @Description : 获取session中对象
-     * @Param : [name]
-     * @Return : java.lang.Object
-     * @Author : gsq
-     * @Date : 17:00
-     * @note : An art cell ! 
-    **/
+     * 获取 session 中对象
+     *
+     * @param name session key
+     */
     public Object getSessionAttributeObj(String name) {
+        Objects.requireNonNull(name, "session attribute name must not be null");
         return getRequestAttributes().getAttribute(name, RequestAttributes.SCOPE_SESSION);
     }
 
     /**
-     * @Description : 移除session值
-     * @Param : [name]
-     * @Return : void
-     * @Author : gsq
-     * @Date : 17:01
-     * @note : An art cell ! 
-    **/
+     * 移除 session 值
+     *
+     * @param name session key
+     */
     public void removeSessionAttribute(String name) {
+        Objects.requireNonNull(name, "session attribute name must not be null");
         getRequestAttributes().removeAttribute(name, RequestAttributes.SCOPE_SESSION);
     }
 
     /**
-     * @Description : 设置session字符串
-     * @Param : [name, object]
-     * @Return : void
-     * @Author : gsq
-     * @Date : 17:01
-     * @note : An art cell ! 
-    **/
+     * 设置 session 值
+     *
+     * @param name   session key
+     * @param object session value
+     */
     public void setSessionAttribute(String name, Object object) {
+        Objects.requireNonNull(name, "session attribute name must not be null");
         getRequestAttributes().setAttribute(name, object, RequestAttributes.SCOPE_SESSION);
     }
 

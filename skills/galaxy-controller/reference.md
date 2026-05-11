@@ -13,22 +13,38 @@ AbstractController（追加参数提取、客户端信息、文件上传）
 ## `AbstractController` 完整方法
 
 ```java
-@Override public void resetInfo();   // 由 BaseInterceptor.reload() 触发，子类按需重写
-
+// 客户端信息
 protected String   getIp();
+protected String   getRemoteIp();
+protected boolean  isAjax();
+protected boolean  isGet();
+protected boolean  isPost();
+protected boolean  isMethod(String method);
+protected String   getUserAgent();
+protected String   getUserAgent(String def);
+
+// Header / Cookie
 protected String   getHeader(String name);
+protected String   getHeader(String name, String def);
 protected Map<String, String> getHeaders();
 protected String   getCookieValue(String name);
+protected String   getCookieValue(String name, String def);
+
+// 参数
 protected String   getParameter(String name);
 protected String   getParameter(String name, String def);
 protected String[] getParameters(String name);
 protected int      getParameterInt(String name, int def);
 protected long     getParameterLong(String name, long def);
+protected boolean  getParameterBool(String name, boolean def);
 protected Map<String, String[]> getParametersMap();
 protected Map<String, String>   getRefererParameter();
+protected String   getRequestUrl();
+protected String   getRequestUri();
 protected <T> T    getObject(Class<T> tClass);
+protected <T> T    getObject(Class<T> tClass, boolean ignoreError);
 
-// 文件上传（详见 galaxy-multipart）
+// 文件上传
 public static void clearResources();   // 由 BaseInterceptor.afterCompletion 自动调
 protected MultipartHttpServletRequest getMultiRequest();
 protected boolean  hasFile();
@@ -38,27 +54,124 @@ protected MultipartFileBuilder createMultipart();
 ## `BaseCallbackController` 完整方法（继承得到）
 
 ```java
-public void resetInfo();   // 默认空实现
+public void resetInfo();   // 默认空实现，子类可重写
 
 // 静态工具
-public static ServletRequestAttributes getRequestAttributes();      // 非空断言
+public static ServletRequestAttributes getRequestAttributes();      // 非请求线程抛 IllegalStateException
 public static ServletRequestAttributes tryGetRequestAttributes();   // 可能 null
 public static String getClientIP();
-public static Map<String, String> getHeaderMapValues(HttpServletRequest request);
+public static Map<String, String> getHeaderMapValues(HttpServletRequest request);  // 同名值逗号拼接
 
 // 实例方法
 public HttpServletRequest  getRequest();
-public HttpServletResponse getResponse();
-public HttpSession         getSession();
+public HttpServletResponse getResponse();   // 可能为 null
+public HttpSession         getSession();    // 不存在时自动创建
+public HttpSession         getSession(boolean create);
 public ServletContext      getServletContext();
 
-public Object getAttribute(String name);
-public void   setAttribute(String name, Object object);
+public Object  getAttribute(String name);
+public void    setAttribute(String name, Object object);
 
-public String getSessionAttribute(String name);          // toString
-public Object getSessionAttributeObj(String name);
-public void   setSessionAttribute(String name, Object object);
-public void   removeSessionAttribute(String name);
+public String  getSessionAttribute(String name);          // 不存在返回 null
+public Object  getSessionAttributeObj(String name);
+public void    setSessionAttribute(String name, Object object);
+public void    removeSessionAttribute(String name);
+```
+
+## `MultipartFileBuilder` 完整方法
+
+```java
+public MultipartFileBuilder(MultipartHttpServletRequest request)
+
+// 链式 setter
+public MultipartFileBuilder setMaxSize(long maxSize)           // 默认 10MB，0 = 不限
+public MultipartFileBuilder setMaxSize(String maxSize)         // 如 "10MB"、"500KB"
+public MultipartFileBuilder setUseOriginalFilename(boolean)
+public MultipartFileBuilder addFieldName(String fieldName)
+public MultipartFileBuilder resetFieldName(String fieldName)
+public MultipartFileBuilder setMultiple(boolean multiple)
+public MultipartFileBuilder setFileExt(String... fileExt)
+public MultipartFileBuilder setInputStreamType(String... inputStreamType)
+public MultipartFileBuilder setContentTypePrefix(String contentTypePrefix)
+public MultipartFileBuilder setSavePath(String savePath)
+
+// 保存
+public String              save() throws IOException
+public String[]            saves() throws IOException
+public String[]            saveAndName() throws IOException     // [path, originalFilename]
+public List<String[]>      saveAndNames() throws IOException
+```
+
+## 校验与保存流程（每个文件）
+
+```java
+1. fileName = multiFile.getOriginalFilename()
+   ↓ if blank → throw IllegalArgumentException("fileName:不能获取到文件名")
+   ↓ if contains ".." / "/" / "\\" → throw IllegalArgumentException("fileName:非法文件名:...")
+
+2. fileSize = multiFile.getSize()
+   ↓ if <= 0 → throw IllegalArgumentException("fileSize:文件内容为空")
+
+3. if (fileExt != null):
+       check FileUtil.extName(fileName) ∈ fileExt (ignoreCase)
+       ↓ 否则 throw "fileExt:类型错误:..."
+
+4. if (maxSize > 0 && fileSize > maxSize):
+       throw "maxSize:too big:..."
+
+5. if (inputStreamType != null):
+       fileType = FileTypeUtil.getType(multiFile.getInputStream())
+       check fileType ∈ inputStreamType (ignoreCase)
+       ↓ 否则 throw "inputStreamType:类型错误:..."
+
+6. localPath = savePath != null ? savePath : MultipartFileConfig.getFileTempPath()
+
+7. 计算 filePath:
+   if useOriginalFilename:
+       filePath = normalize("{localPath}/{fileName}")
+       ↓ if FileUtil.exist(filePath) → throw IllegalArgumentException("fileName:文件已存在:...")
+   else:
+       saveFileName = UnicodeUtil.toUnicode(fileName).replace("\\", "_")
+       filePath = normalize("{localPath}/{ObjectId}_{saveFileName}")
+
+8. FileUtil.writeFromStream(multiFile.getInputStream(), filePath)   // 落盘
+
+9. if (contentTypePrefix != null):
+       contentType = Files.probeContentType(Paths.get(filePath))  // 优先基于内容
+       if contentType == null:
+           contentType = FileUtil.getMimeType(filePath)             // 回退到扩展名
+       if contentType == null:
+           deleteFileQuietly(filePath)
+           throw "contentTypePrefix:获取文件类型失败"
+       if !contentType.startsWith(contentTypePrefix):
+           deleteFileQuietly(filePath)
+           throw "contentTypePrefix:文件类型不正确:..."
+
+10. return new String[]{filePath, fileName}
+```
+
+## `save()` 与 `saves()` 区别
+
+`save()` 内部仍然调 `saves()`，但加了前置校验：
+
+```java
+private void checkSaveOne() {
+    if (fieldNames.size() != 1) throw IllegalArgumentException("fieldNames size:X  use saves");
+    if (multiple) throw IllegalArgumentException("multiple use saves");
+}
+```
+
+调 `save()` 等价于 `paths = saves(); return paths[0]`。
+
+`saveAndName()` / `saveAndNames()` 同理：前者有 `checkSaveOne` 前置。
+
+## `MultipartFileConfig`
+
+```java
+public class MultipartFileConfig {
+    public static void setFileTempPath(String fileTempPath);   // 启动期设置
+    public static String getFileTempPath();                     // 默认 hutool UserInfo.getTempDir()
+}
 ```
 
 ## 与 `BaseInterceptor` 的协作
@@ -70,26 +183,20 @@ HTTP 请求来 → DispatcherServlet
       ├─ /favicon.ico：写 favicon，return false
       └─ 其余：
           ├─ if controller instanceof BaseCallbackController:
-          │     currentController.set((BaseCallbackController) controller)   ← 缓存进 ThreadLocal
+          │     currentController.set((BaseCallbackController) controller)   ← ThreadLocal 缓存
           └─ 调用子类抽象 preHandle(req, resp, HandlerMethod)
 
   → 你的拦截器子类 preHandle(...) 返回 true
-      （你可以在此手动调 reload() —— 触发 currentController.resetInfo()）
+      （可在此手动调 reload() —— 触发 currentController.resetInfo()）
 
-  → Controller 方法执行（继承 AbstractController 的）
+  → Controller 方法执行
 
   → BaseInterceptor.postHandle(...) （状态码 ≥ 400 时打 error 日志）
   → BaseInterceptor.afterCompletion(...)
       ├─ ClientAbortException：warn 日志
       ├─ 其他 ex：error 日志
-      ├─ AbstractController.clearResources()   ← 清 multipart 缓存
-      └─ clearResources()                      ← 清 currentController
-```
-
-`BaseInterceptor` 内部的 `currentController` ThreadLocal：
-
-```java
-private static final ThreadLocal<BaseCallbackController> currentController = new ThreadLocal<>();
+      ├─ AbstractController.clearResources()   ← 兼容方法（现为空实现，request attribute 自动回收）
+      └─ clearResources()                      ← 清 currentController ThreadLocal
 ```
 
 子类可调 `reload()` 主动触发 `resetInfo()`：
@@ -105,41 +212,19 @@ public class MyInterceptor extends BaseInterceptor {
 }
 ```
 
-## ThreadLocal 列表
+## Spring 配置（必须，库不替你做）
 
-| ThreadLocal | 位置 | 清理时机 |
-|-------------|------|----------|
-| `RequestContextHolder` | Spring（每个请求自动）| Spring 自动 |
-| `BaseInterceptor.currentController` | 拦截器 | `afterCompletion` |
-| `AbstractController.THREAD_LOCAL_MULTIPART_HTTP_SERVLET_REQUEST` | Controller | `afterCompletion` |
-
-**异步线程**（`@Async`、`CompletableFuture`、`CommonAsyncProcessor`）**不会**继承上述 ThreadLocal——异步执行体内调用 `getRequest()` 会 NPE。需要的数据在主请求线程提前取出。
-
-## 实现细节摘录
-
-### `getIp()`
-
-```java
-return ServletUtil.getClientIP(getRequest());
+```yaml
+spring:
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 100MB
+      max-request-size: 200MB
 ```
 
-`ServletUtil.getClientIP` 默认按以下顺序：`X-Forwarded-For` → `X-Real-IP` → `Proxy-Client-IP` → `WL-Proxy-Client-IP` → `request.getRemoteAddr()`。
+如果 `max-file-size` 比 `setMaxSize` 小，Spring 会先拒绝（在到达 builder 之前），抛 `MaxUploadSizeExceededException`。
 
-要改 header 顺序：在 yml 配 `ip.defaultHeaderName`（库提供这个 key，但需要在调 `getClientIP` 的位置自己读取并传给 hutool——`ServletUtil.getClientIP` 默认实现不读这个 key，仅作为约定常量存在于 `CommonPropertiesFinal.IP_DEFAULT_HEADER_NAME`）。
+## 异步线程注意事项
 
-### `getRefererParameter()`
-
-```java
-String referer = getHeader(HttpHeaders.REFERER);
-return HttpUtil.decodeParamMap(referer, CharsetUtil.charset(CharsetUtil.UTF_8));
-```
-
-`Referer` 中含 query string（`?a=1&b=2`）时，返回 `{a:1, b:2}`。无 referer 或无 query 时返回空 Map。
-
-### `getObject(Class<T>)`
-
-```java
-return ServletUtil.toBean(getRequest(), tClass, true);
-```
-
-第三参数 `true` = 大小写不敏感（form 字段 `userName` 也能填到 `username` 字段）。
+`@Async`、`CompletableFuture`、`CommonAsyncProcessor` 等异步执行体内**不会**继承 `RequestContextHolder` 的 ThreadLocal——调用 `getRequest()` 会抛 `IllegalStateException`。需要的数据在主请求线程提前取出。

@@ -10,9 +10,10 @@ import cn.hutool.core.util.StrUtil;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.multipart.MultipartHttpServletRequest;
 
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.*;
 
 /**
@@ -25,11 +26,16 @@ import java.util.*;
  **/
 public class MultipartFileBuilder {
 
+    /**
+     * 默认单文件大小限制：10MB
+     */
+    private static final long DEFAULT_MAX_SIZE = 10 * 1024 * 1024;
+
     private MultipartHttpServletRequest multipartHttpServletRequest;
     /**
-     * 限制上传文件的大小
+     * 限制上传文件的大小（默认 10MB）
      */
-    private long maxSize = 0;
+    private long maxSize = DEFAULT_MAX_SIZE;
     /**
      * 字段名称
      */
@@ -51,7 +57,7 @@ public class MultipartFileBuilder {
     /**
      * 文件流类型
      *
-     * @see FileUtil#getType(File)
+     * @see FileTypeUtil#getType(InputStream)
      */
     private String[] inputStreamType;
     /**
@@ -66,7 +72,7 @@ public class MultipartFileBuilder {
     /**
      * 文件上传大小限制
      *
-     * @param maxSize 字节大小
+     * @param maxSize 字节大小（0 表示不限制）
      * @return this
      */
     public MultipartFileBuilder setMaxSize(long maxSize) {
@@ -207,20 +213,24 @@ public class MultipartFileBuilder {
         if (fieldNames.isEmpty()) {
             throw new IllegalArgumentException("fieldNames:empty");
         }
-        String[] paths = new String[fieldNames.size()];
-        int index = 0;
+        List<String> pathList = new ArrayList<>();
         for (String fieldName : fieldNames) {
             if (this.multiple) {
                 List<MultipartFile> multipartFiles = multipartHttpServletRequest.getFiles(fieldName);
                 for (MultipartFile multipartFile : multipartFiles) {
-                    paths[index++] = saveAndName(multipartFile)[0];
+                    if (multipartFile != null && !multipartFile.isEmpty()) {
+                        pathList.add(saveAndName(multipartFile)[0]);
+                    }
                 }
             } else {
                 MultipartFile multipartFile = multipartHttpServletRequest.getFile(fieldName);
-                paths[index++] = saveAndName(multipartFile)[0];
+                if (multipartFile == null || multipartFile.isEmpty()) {
+                    throw new IllegalArgumentException("fieldName:" + fieldName + " 没有对应的文件");
+                }
+                pathList.add(saveAndName(multipartFile)[0]);
             }
         }
-        return paths;
+        return pathList.toArray(new String[0]);
     }
 
     /**
@@ -250,13 +260,16 @@ public class MultipartFileBuilder {
             if (this.multiple) {
                 List<MultipartFile> multipartFiles = multipartHttpServletRequest.getFiles(fieldName);
                 for (MultipartFile multipartFile : multipartFiles) {
-                    String[] info = saveAndName(multipartFile);
-                    list.add(info);
+                    if (multipartFile != null && !multipartFile.isEmpty()) {
+                        list.add(saveAndName(multipartFile));
+                    }
                 }
             } else {
                 MultipartFile multipartFile = multipartHttpServletRequest.getFile(fieldName);
-                String[] info = saveAndName(multipartFile);
-                list.add(info);
+                if (multipartFile == null || multipartFile.isEmpty()) {
+                    throw new IllegalArgumentException("fieldName:" + fieldName + " 没有对应的文件");
+                }
+                list.add(saveAndName(multipartFile));
             }
         }
         return list;
@@ -270,9 +283,16 @@ public class MultipartFileBuilder {
      * @throws IOException IO
      */
     private String[] saveAndName(MultipartFile multiFile) throws IOException {
+        if (multiFile == null || multiFile.isEmpty()) {
+            throw new IllegalArgumentException("multipartFile:文件对象为空");
+        }
         String fileName = multiFile.getOriginalFilename();
         if (StrUtil.isEmpty(fileName)) {
             throw new IllegalArgumentException("fileName:不能获取到文件名");
+        }
+        // 防止路径遍历攻击
+        if (fileName.contains("..") || fileName.contains("/") || fileName.contains("\\")) {
+            throw new IllegalArgumentException("fileName:非法文件名:" + fileName);
         }
         long fileSize = multiFile.getSize();
         if (fileSize <= 0) {
@@ -292,16 +312,17 @@ public class MultipartFileBuilder {
                 throw new IllegalArgumentException("fileExt:类型错误:" + checkName);
             }
         }
-        // 文件大小
+        // 文件大小（0 表示不限制）
         if (maxSize > 0 && fileSize > maxSize) {
             throw new IllegalArgumentException("maxSize:too big:" + fileSize + ">" + maxSize);
         }
-        // 文件流类型
+        // 文件流类型（通过文件内容判断真实类型，防篡改扩展名）
         if (this.inputStreamType != null) {
-            InputStream inputStream = multiFile.getInputStream();
-            String fileType = FileTypeUtil.getType(inputStream);
-            if (!ArrayUtil.containsIgnoreCase(this.inputStreamType, fileType)) {
-                throw new IllegalArgumentException("inputStreamType:类型错误:" + fileType);
+            try (InputStream inputStream = multiFile.getInputStream()) {
+                String fileType = FileTypeUtil.getType(inputStream);
+                if (!ArrayUtil.containsIgnoreCase(this.inputStreamType, fileType)) {
+                    throw new IllegalArgumentException("inputStreamType:类型错误:" + fileType);
+                }
             }
         }
         // 保存路径
@@ -315,6 +336,9 @@ public class MultipartFileBuilder {
         String filePath;
         if (useOriginalFilename) {
             filePath = FileUtil.normalize(String.format("%s/%s", localPath, fileName));
+            if (FileUtil.exist(filePath)) {
+                throw new IllegalArgumentException("fileName:文件已存在:" + filePath);
+            }
         } else {
             // 防止中文乱码
             String saveFileName = UnicodeUtil.toUnicode(fileName);
@@ -323,23 +347,37 @@ public class MultipartFileBuilder {
             filePath = FileUtil.normalize(String.format("%s/%s_%s", localPath, IdUtil.objectId(), saveFileName));
         }
         FileUtil.writeFromStream(multiFile.getInputStream(), filePath);
-        // 文件contentType
+        // 文件contentType（优先基于文件内容，其次基于扩展名）
         if (this.contentTypePrefix != null) {
-            //            Path source = Paths.get(filePath);
-            String contentType = FileUtil.getMimeType(filePath);
-            //Files.probeContentType(source);
+            String contentType = null;
+            try {
+                contentType = Files.probeContentType(Paths.get(filePath));
+            } catch (Exception ignored) {
+                // 系统不支持 probeContentType 时回退到扩展名判断
+            }
             if (contentType == null) {
-                // 自动清理文件
-                FileUtil.del(filePath);
+                contentType = FileUtil.getMimeType(filePath);
+            }
+            if (contentType == null) {
+                deleteFileQuietly(filePath);
                 throw new IllegalArgumentException("contentTypePrefix:获取文件类型失败");
             }
             if (!contentType.startsWith(contentTypePrefix)) {
-                // 自动清理文件
-                FileUtil.del(filePath);
+                deleteFileQuietly(filePath);
                 throw new IllegalArgumentException("contentTypePrefix:文件类型不正确:" + contentType);
             }
         }
         return new String[]{filePath, fileName};
+    }
+
+    /**
+     * 静默删除文件（删除失败不抛异常）
+     */
+    private static void deleteFileQuietly(String filePath) {
+        try {
+            FileUtil.del(filePath);
+        } catch (Exception ignored) {
+        }
     }
 
     public MultipartFileBuilder(MultipartHttpServletRequest multipartHttpServletRequest) {
