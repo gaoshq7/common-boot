@@ -1,11 +1,22 @@
 ---
 name: galaxy-controller
-description: Spring MVC Controller 继承 AbstractController 基类，无需手动注入 HttpServletRequest 即可获取 request/response/IP/UA/参数/Session/Cookie 读写/请求体 JSON/响应输出/文件上传下载。当用户写"@RestController"、"@Controller"、"继承 AbstractController"、"写接口"、"获取参数"、"必填参数"、"getParameter"、"文件上传"、"upload"、"文件下载"、"download"、"writeJson"、"redirect"、"setCookie"、"Session"时使用。
+description: AbstractController（来自 common-boot 库）的底层 API 参考：动态获取参数、必填参数校验、请求体 JSON、Cookie / Session 读写、文件上传下载、响应直接输出。当用户问"getParameter / getParameterRequired / getParameterInt 怎么用"、"createMultipart 链式上传"、"hasFile"、"download(file) / download(stream)"、"writeJson / redirect / sendError"、"setCookie / removeCookie"、"getSession / getCookieValue"、"getBodyJson"、"AbstractController 的某某方法"，或在非 galaxy 项目中继承 AbstractController 编写 Controller 时使用。⚠️ 在 galaxy 项目中编写新 Controller 请走 restful-controller skill（RestfulBaseController 已 extends AbstractController，业务 Controller 单继承即可同时获得规范层 + 本 skill 的全部底层能力）。
 ---
 
 # Galaxy Controller
 
 继承 `AbstractController`，所有 `protected` 方法直接可用：请求信息、参数、Cookie、Session、请求体、响应输出、文件上传下载。
+
+> **⚠️ 在 galaxy 项目中的定位**
+>
+> 本 skill 是 `common-boot` 外部依赖（`io.github.gaoshq7:common-boot`）的底层 API 参考，适用于任何使用该库的 Spring Boot 项目。
+>
+> **在 galaxy 项目中编写新 Controller**：**必须**继承 `RestfulBaseController`（`galaxy-common` 模块）—— 它已 `extends AbstractController`，业务 Controller 单继承即可同时获得：
+>
+> - REST 规范层快捷方法（`ok` / `created` / `accepted` / `badRequest` / `paginated` / ...）—— 详见 `restful-controller` skill。
+> - 本 skill 列出的全部底层能力（参数获取 / 文件上传下载 / Cookie / Session / 响应输出 / ...）。
+>
+> 本文档主要用于查阅底层 API 的具体签名、参数语义、边界与注意事项。
 
 ## 快速上手（5 分钟）
 
@@ -79,8 +90,12 @@ BaseCallbackController（提供请求/会话/属性的基础访问）
     ↑ extends
 AbstractController（追加客户端信息、参数、请求体、Cookie 读写、响应输出、文件上传下载）
     ↑ extends
+RestfulBaseController（仅 galaxy 项目；扩展状态码 / Api-prompt / 分页 / 异步任务规范；其它项目可忽略）
+    ↑ extends
 （你的 Controller）
 ```
+
+> 在 galaxy 项目中，业务 Controller 应从 `RestfulBaseController` 继承，详见 `restful-controller` skill。在其它项目中可直接从 `AbstractController` 继承。
 
 ## 功能索引
 
