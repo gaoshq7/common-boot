@@ -83,6 +83,8 @@ public class GalaxySpringUtil implements ApplicationListener, ApplicationContext
     @Override
     public void setApplicationContext(ApplicationContext applicationContext) throws BeansException {
         setApplicationContexts(applicationContext);
+        // 启动期一次性加载事件处理器，避免运行期首个事件触发的并发竞态与级联加载失败
+        EventHandleSelector.ensureInit();
         Set<ApplicationEventLoad> applicationEventLoads = GalaxyApplicationBuilder.getActiveApplication(GalaxyApplicationBuilder::getApplicationEventLoads);
         if (applicationEventLoads != null) {
             for (ApplicationEventLoad applicationEventLoad : applicationEventLoads) {
@@ -117,6 +119,8 @@ public class GalaxySpringUtil implements ApplicationListener, ApplicationContext
         // 应用关闭
         if (event instanceof ContextClosedEvent) {
             DefaultSystemLog.getLog().info("Galaxy核心将要关闭...");
+            // 清理静态 handler 引用，避免容器重启 / DevTools 热重启时调用到旧 context 的 bean
+            EventHandleSelector.reset();
             return;
         }
         // 请求异常记录
